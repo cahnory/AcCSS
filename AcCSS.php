@@ -1,5 +1,33 @@
 <?php
 
+	/**
+	 * LICENSE: Copyright (c) 2010 François 'cahnory' Germain
+	 * Permission is hereby granted, free of charge, to any person obtaining a copy
+	 * of this software and associated documentation files (the "Software"), to deal
+	 * in the Software without restriction, including without limitation the rights
+	 * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	 * copies of the Software, and to permit persons to whom the Software is
+	 * furnished to do so, subject to the following conditions:
+	 * 
+	 * The above copyright notice and this permission notice shall be included in
+	 * all copies or substantial portions of the Software.
+	 * 
+	 * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	 * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	 * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	 * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	 * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	 * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+	 * THE SOFTWARE.
+	 * that is available through the world-wide-web at the following URI:
+	 * http://www.php.net/license/3_01.txt.  If you did not receive a copy of
+	 * the PHP License and are unable to obtain it through the web, please
+	 * send a note to license@php.net so we can mail you a copy immediately.
+	 *
+	 * @author     François 'cahnory' Germain <cahnory@gmail.com>
+	 * @copyright  2010 François Germain
+	 * @license    http://www.opensource.org/licenses/mit-license.php
+	 */
 	class AcCSS
 	{
 		private	$_root;
@@ -18,9 +46,9 @@
 		private		$_parsingNode;
 		
 		static	private	$_parsingPatterns	=	array(
-			'functionOpening'	=>	'(?<=\$\()(?:.(?![\s]*{))*(?=\)[\s]*\{)',
+			'functionOpening'	=>	'\$\((?:.(?![\s]*{))*(?=\)[\s]*\{)',
 			'functionSource'	=>	'\)[\s]*\{(?:.(?!\}))*(?=\$\})',
-			'functionCall'		=>	'(?<=\$)[^;:\s({}]+\((?:.(?!\);))*.(?=\);)',
+			'functionCall'		=>	'(?<=\$)[^;:\s({}]+(?:\((?=\);)|\((?:.(?!\);))*.(?=\);))',
 			'nodeOpening'		=>	'[^\s;(){}][^;(){}]+(?=\{)',
 			'property'			=>	'(?<=;|\{|\}|^)[^{}:]+(?=:)',
 			'value'				=>	'(?<=:)[^{};]+(?=;|\}|$)',
@@ -63,14 +91,14 @@
 		private	function	_parseString($string)
 		{
 			//	Remove comments and extra white spaces
-			$string	=	preg_replace('#/\*\*/|/\*(.(?!\*/))*.\*/#', ' ', $string);
+			$string	=	preg_replace('#/\*\*/|/\*(.(?!\*/))*.\*/#s', ' ', $string);
 			$string	=	preg_replace('#[\s]+#s', ' ', $string);
-			$string	=	preg_replace('#(?<=[:;{]|^)[\s]*|[\s]*(?=[:;}])|;(?=})#', '', $string);
+			$string	=	preg_replace('#(?<=[:;{]|^)[\s]*|[\s]*(?=[:;}])|;(?=})#s', '', $string);
 			
 			//	Explode the string (openNode, closeNode, property, value,...)
-			$pattern	=	'#('.implode(')|(', self::$_parsingPatterns).')#si';
+			$pattern	=	'#('.implode(')|(', self::$_parsingPatterns).')#s';
 			preg_match_all($pattern, $string, $match);
-			preg_match('#function[\s]*\(#si', $string, $m);
+			preg_match('#function[\s]*\(#s', $string, $m);
 			
 			$lastMapKey	=	sizeof(self::$_parsingMap) - 1;
 			for($i = 0; isset($match[0][$i]); $i++) {
@@ -99,7 +127,7 @@
 				$this->_calledFunction	=	$this->_functions[$name];
 				$args	=	array_combine(
 					$this->_calledFunction['arguments'],
-					array_pad(explode(';', $args), sizeof($this->_calledFunction['arguments']), NULL)
+					array_pad(explode(';', $this->_parseVariables($args)), sizeof($this->_calledFunction['arguments']), NULL)
 				);
 				extract($args);
 				eval($this->_calledFunction['source']);
@@ -108,9 +136,9 @@
 		}
 		
 		private	function	_parseFunctionOpening($string)
-		{
+		{			
 			if($this->_allowUserFunc && !$this->_parsingFunction && $this-> _parsingVariable) {
-				$string	=	preg_replace('#[\s]*#s', '', $string);
+				$string	=	preg_replace('#\$\(|[\s]*#s', '', $string);
 				$this->_parsingFunction	=	array(
 					'arguments'	=>	explode(',', $string)
 				);
@@ -120,7 +148,8 @@
 		private	function	_parseFunctionSource($string)
 		{
 			if($this->_parsingFunction && $this-> _parsingVariable) {
-				$this->_parsingFunction['source']			=	str_replace('$->','$this->_parsingNode->', end(preg_split('#^\)[\s]*\{#',$string)));
+				$this->_parsingFunction['source']			=	preg_split('#^\)[\s]*\{#s', $string);
+				$this->_parsingFunction['source']			=	str_replace('$->','$this->_parsingNode->', end($this->_parsingFunction['source']));
 				$this->_functions[$this->_parsingVariable]	=	$this->_parsingFunction;
 				$this->_parsingFunction		=	NULL;
 				$this-> _parsingVariable	=	NULL;
@@ -137,7 +166,7 @@
 		
 		private	function	_parseProperty($string)
 		{
-			if(preg_match('#^[\s]*\$(.+)#', $string, $m)) {
+			if(preg_match('#^[\s]*\$(.+)#s', $string, $m)) {
 				$this-> _parsingVariable	=	$m[1];
 			} elseif($this->_parsingNode) {
 				$this->_parsingProperty	=	$string;
@@ -147,8 +176,8 @@
 		private	function	_parseValue($string)
 		{				
 			if($this->_parsingProperty !== NULL && $this->_parsingNode) {
-				if($lock = preg_match('#^\+#', $this->_parsingProperty))
-					$this->_parsingProperty	=	preg_replace('#^\+#', '', $this->_parsingProperty);					
+				if($lock = preg_match('#^\+#s', $this->_parsingProperty))
+					$this->_parsingProperty	=	preg_replace('#^\+#s', '', $this->_parsingProperty);					
 				$this->_parsingNode->set($this->_parsingProperty, $string, $lock);
 			} elseif($this-> _parsingVariable !== NULL) {
 				$this-> _variables[$this-> _parsingVariable]	=	$this->_parseVariables($string);
@@ -160,7 +189,7 @@
 		private	function	_parseVariables($string)
 		{
 			$string	=	preg_replace_callback(
-				'#\$([^;:\s{}-]+(?=[;:\s{}]))#',
+				'#\$([^;:\s{}]+)(?=[;:\s{}]|$)#s',
 				array($this, '_parseVariablesCallback'),
 				$string
 			);
@@ -169,7 +198,7 @@
 		
 		private	function _parseVariablesCallback($m)
 		{
-			return	isset($this-> _variables[$m[1]]) ? $this-> _variables[$m[1]] : NULL;
+			return	isset($this->_root->_variables[$m[1]]) ? $this->_root->_variables[$m[1]] : NULL;
 		}
 		
 		public	function	addChild($selectors)
@@ -196,7 +225,7 @@
 			$this->_allowUserFunc	=	$allow;
 		}
 		
-		public	function	set($name, $value, $lock)
+		public	function	set($name, $value, $lock = false)
 		{
 			if(!isset($this->_properties[$name])) {
 				$this->_properties[$name]	=	array();
@@ -208,7 +237,7 @@
 				}
 			}
 			$this->_properties[$name][]	=	array(
-				'value'		=>	$this->_root->_parseVariables($value),
+				'value'		=>	$this->_parseVariables($value),
 				'locked'	=>	$lock
 			);
 		}
