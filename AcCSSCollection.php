@@ -41,8 +41,14 @@
 			}
 			return	$string;
 		}
+		public	function	add($name, $add)
+		{
+			foreach($this->_nodes as $node) {
+				$node->add($name, $add);
+			}
+		}
 		
-		public	function	add(AcCSS $node)
+		public	function	addNode(AcCSS $node)
 		{
 			$this->_nodes[spl_object_hash($node)]	=	$node;
 		}

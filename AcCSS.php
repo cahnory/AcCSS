@@ -47,9 +47,9 @@
 		
 		static	private	$_parsingPatterns	=	array(
 			'functionOpening'	=>	'\$\((?:.(?![\s]*{))*(?=\)[\s]*\{)',
-			'functionSource'	=>	'\)[\s]*\{(?:.(?!\}))*(?=\$\})',
+			'functionSource'	=>	'\)[\s]*\{(?:.(?!\$\}))*.(?=\$\})',
 			'functionCall'		=>	'(?<=\$)[^;:\s({}]+(?:\((?=\);)|\((?:.(?!\);))*.(?=\);))',
-			'nodeOpening'		=>	'[^\s;(){}][^;(){}]+(?=\{)',
+			'nodeOpening'		=>	'(?<=;|\{|\}|^)[^;(){}]+(?=\{)',
 			'property'			=>	'(?<=;|\{|\}|^)[^{}:]+(?=:)',
 			'value'				=>	'(?<=:)[^{};]+(?=;|\}|$)',
 			'closure'			=>	'\}'
@@ -98,7 +98,6 @@
 			//	Explode the string (openNode, closeNode, property, value,...)
 			$pattern	=	'#('.implode(')|(', self::$_parsingPatterns).')#s';
 			preg_match_all($pattern, $string, $match);
-			preg_match('#function[\s]*\(#s', $string, $m);
 			
 			$lastMapKey	=	sizeof(self::$_parsingMap) - 1;
 			for($i = 0; isset($match[0][$i]); $i++) {
@@ -211,7 +210,7 @@
 				$child->_parent		=	$this;
 				$child->_selector	=	trim($this->_selector.' '.trim($selector));
 				$this->_children[]	=	$child;
-				$set->add($child);
+				$set->addNode($child);
 			}
 			return	$set;
 		}
@@ -222,7 +221,7 @@
 		}
 		
 		public	function	allowUserFunc($allow) {
-			$this->_allowUserFunc	=	$allow;
+			$this->_root->_allowUserFunc	=	$allow;
 		}
 		
 		public	function	set($name, $value, $lock = false)
@@ -240,6 +239,33 @@
 				'value'		=>	$this->_parseVariables($value),
 				'locked'	=>	$lock
 			);
+		}
+		
+		public	function	add($name, $add)
+		{
+			$value	=	NULL;
+			if(!isset($this->_properties[$name])) {
+				$this->_properties[$name]	=	array();
+			} elseif(!$lock) {
+				foreach($this->_properties[$name] as $k => $v) {
+					if(!$v['locked']) {
+						$value	=	$v['value'];
+						unset($this->_properties[$name][$k]);
+					}
+				}
+			}
+			$add	=	$this->_parseVariables($add);
+			if($value && $add)
+				$value	.=	',';
+			$this->_properties[$name][]	=	array(
+				'value'		=>	$value.$add,
+				'locked'	=>	false
+			);
+		}
+		
+		public	function	get($name)
+		{
+			return	isset($this->_properties[$name]) ? end($this->_properties[$name]) : NULL;
 		}
 	}
 
