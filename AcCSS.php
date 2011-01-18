@@ -75,14 +75,14 @@
 		{
 			$string	=	'';
 			if($this->_selector && $this->_properties) {
-				$string	.=	$this->_selector.'{'.$this->toStyle().'}';
+				$string	.=	self::_getBlockString($this->_selector, $this->toStyle());
 			}
 			return	$string.$this->getChildrenString();
 		}
 		
 		static	private	function	_getBlockString($selector, $properties)
 		{
-			return	$selector.'{'.$properties.'}'."\r\n";
+			return	$selector."{\r\n".$properties.'}'."\r\n";
 		}
 		
 		private	function	_parseString($string)
@@ -98,8 +98,8 @@
 			
 			$lastMapKey	=	sizeof(self::$_parsingMap) - 1;
 			for($i = 0; isset($match[0][$i]); $i++) {
-				for($j = $lastMapKey; isset(self::$_parsingMap); $j--) {
-					if(!empty($match[$j+1][$i])) {
+				for($j = $lastMapKey; isset(self::$_parsingMap[$j]); $j--) {				
+					if(!empty($match[$j+1][$i]) || $match[$j+1][$i] === '0') {
 						call_user_func(array($this, self::$_parsingMap[$j]), $match[$j+1][$i]);
 						break;
 					}
@@ -185,7 +185,7 @@
 		private	function	_parseVariables($string)
 		{
 			$string	=	preg_replace_callback(
-				'#\$([^;:\s{}]+)(?=[;:\s{}]|$)#s',
+				'#\$(?!->)([^;:\s{}]+)(?=[;:\s{}]|$)#s',
 				array($this, '_parseVariablesCallback'),
 				$string
 			);
@@ -199,7 +199,7 @@
 		
 		public	function	addChild($selectors)
 		{
-			$selectors		=	explode(',', $selectors);
+			$selectors		=	explode(',', $this->_parseVariables($selectors));
 			$set			=	new AcCSSCollection;
 			$set->_parent	=	$this;
 			foreach($selectors as $selector) {
@@ -223,6 +223,11 @@
 		public	function	addString($string)
 		{
 			$this->_parseString($string);
+		}
+		
+		public	function	allowUserFunc($allow)
+		{
+			$this->_root->_allowUserFunc	=	$allow;
 		}
 		
 		public	function	get($name)
@@ -256,27 +261,6 @@
 			return	$string.$children;
 		}
 		
-		public	function	allowUserFunc($allow) {
-			$this->_root->_allowUserFunc	=	$allow;
-		}
-		
-		public	function	set($name, $value, $lock = false)
-		{
-			if(!isset($this->_properties[$name])) {
-				$this->_properties[$name]	=	array();
-			} elseif(!$lock) {
-				foreach($this->_properties[$name] as $k => $v) {
-					if(!$v['locked']) {
-						unset($this->_properties[$name][$k]);
-					}
-				}
-			}
-			$this->_properties[$name][]	=	array(
-				'value'		=>	$this->_parseVariables($value),
-				'locked'	=>	$lock
-			);
-		}
-		
 		public	function	push($name, $add)
 		{
 			$value	=	NULL;
@@ -299,12 +283,29 @@
 			);
 		}
 		
+		public	function	set($name, $value, $lock = false)
+		{
+			if(!isset($this->_properties[$name])) {
+				$this->_properties[$name]	=	array();
+			} elseif(!$lock) {
+				foreach($this->_properties[$name] as $k => $v) {
+					if(!$v['locked']) {
+						unset($this->_properties[$name][$k]);
+					}
+				}
+			}
+			$this->_properties[$name][]	=	array(
+				'value'		=>	$this->_parseVariables($value),
+				'locked'	=>	$lock
+			);
+		}
+		
 		public	function	toStyle()
 		{
 			$string	=	'';
 			foreach($this->_properties as $name => $values) {
 				foreach($values as $value) {
-					$string	.=	$name.':'.$value['value'].';';
+					$string	.=	'    '.$name.':'.$value['value'].";\r\n";
 				}
 			}
 			return	$string;
