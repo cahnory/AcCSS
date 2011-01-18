@@ -50,7 +50,7 @@
 			'functionSource'	=>	'\)[\s]*\{(?:.(?!\$\}))*.(?=\$\})',
 			'functionCall'		=>	'(?<=\$)[^;:\s({}]+(?:\((?=\);)|\((?:.(?!\);))*.(?=\);))',
 			'nodeOpening'		=>	'(?<=;|\{|\}|^)[^;(){}]+(?=\{)',
-			'property'			=>	'(?<=;|\{|\}|^)[^{}:]+(?=:)',
+			'property'			=>	'(?<=;|\{|\}|^)[^{}:;]+(?=:)',
 			'value'				=>	'(?<=:)[^{};]+(?=;|\}|$)',
 			'closure'			=>	'\}'
 		);
@@ -68,24 +68,21 @@
 		public	function	__construct(AcCSS $root = NULL)
 		{
 			$this->_root	=	$root === NULL ? $this : $root;
+			$this->_parent	=	$this->_root;
 		}
 		
 		public	function	__toString()
 		{
 			$string	=	'';
 			if($this->_selector && $this->_properties) {
-				$string	.=	$this->_selector.'{';
-				foreach($this->_properties as $name => $values) {
-					foreach($values as $value) {
-						$string	.=	$name.':'.$value['value'].';';
-					}
-				}
-				$string	.=	'}'."\r\n";
+				$string	.=	$this->_selector.'{'.$this->toStyle().'}';
 			}
-			foreach($this->_children as $child) {
-				$string	.=	$child;
-			}
-			return	$string;
+			return	$string.$this->getChildrenString();
+		}
+		
+		static	private	function	_getBlockString($selector, $properties)
+		{
+			return	$selector.'{'.$properties.'}'."\r\n";
 		}
 		
 		private	function	_parseString($string)
@@ -208,7 +205,15 @@
 			foreach($selectors as $selector) {
 				$child				=	new AcCSS($this->_root);
 				$child->_parent		=	$this;
-				$child->_selector	=	trim($this->_selector.' '.trim($selector));
+				$child->_selector	=	trim($selector);
+				
+				//	Suffix or child
+				if(preg_match('#^\$->#s', $child->_selector)) {
+					$child->_selector	=	preg_replace('#^\$->#s', '', $child->_selector);
+				} else {
+					$child->_selector	=	' '.$child->_selector;
+				}
+				$child->_selector	=	trim($this->_selector.$child->_selector);
 				$this->_children[]	=	$child;
 				$set->addNode($child);
 			}
@@ -218,6 +223,37 @@
 		public	function	addString($string)
 		{
 			$this->_parseString($string);
+		}
+		
+		public	function	get($name)
+		{
+			return	isset($this->_properties[$name]) ? end($this->_properties[$name]) : NULL;
+		}
+		
+		public	function	getChildrenString()
+		{
+			$string		=	'';
+			$children	=	'';
+			$lastString	=	NULL;
+			$selectors	=	array();
+			foreach($this->_children as $child) {
+				$childString	=	$child->toStyle();
+				$children		.=	$child->getChildrenString();
+				if(empty($childString))	continue;
+				
+				if($childString != $lastString) {
+					if($lastString !== NULL) {
+						$string	.=	self::_getBlockString(implode(',', $selectors), $lastString);
+						$selectors	=	array();
+					}
+					$lastString		=	$childString;
+				}
+				$selectors[]	=	$child->_selector;
+			}
+			if($lastString) {
+				$string	.=	self::_getBlockString(implode(',', $selectors), $lastString);
+			}
+			return	$string.$children;
 		}
 		
 		public	function	allowUserFunc($allow) {
@@ -241,7 +277,7 @@
 			);
 		}
 		
-		public	function	add($name, $add)
+		public	function	push($name, $add)
 		{
 			$value	=	NULL;
 			if(!isset($this->_properties[$name])) {
@@ -263,9 +299,15 @@
 			);
 		}
 		
-		public	function	get($name)
+		public	function	toStyle()
 		{
-			return	isset($this->_properties[$name]) ? end($this->_properties[$name]) : NULL;
+			$string	=	'';
+			foreach($this->_properties as $name => $values) {
+				foreach($values as $value) {
+					$string	.=	$name.':'.$value['value'].';';
+				}
+			}
+			return	$string;
 		}
 	}
 

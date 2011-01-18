@@ -41,10 +41,10 @@
 			}
 			return	$string;
 		}
-		public	function	add($name, $add)
+		public	function	push($name, $add)
 		{
 			foreach($this->_nodes as $node) {
-				$node->add($name, $add);
+				$node->push($name, $add);
 			}
 		}
 		
